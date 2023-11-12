@@ -4,6 +4,16 @@ from itertools import permutations
 import gurobipy as gp
 from gurobipy import GRB
 from functools import lru_cache
+import inquirer
+
+
+# Compute Chebyshev distance between two permutations sigma and pi
+def d_C(sigma, pi):
+    n = len(sigma)
+    distance = 0
+    for i in range(n):
+        distance = max(distance, abs(sigma[i] - pi[i]))
+    return distance
 
 
 # Compute Kendall tau-distance between two permutations sigma and pi
@@ -61,9 +71,9 @@ def cardinality(C):
 
 
 # Solve the optimization problem for even d
-def P_even(n, d, n_factorial, S_n, permutation_index_map, adjacency_matrix):
+def P_even(n, d, distanceMetric, n_factorial, S_n, permutation_index_map, adjacency_matrix):
     model = gp.Model()
-    model.Params.SolFiles = f"results/P({n}, {d})/solution"
+    model.Params.SolFiles = f"results/P({n}, {d}) {distanceMetric}/solution"
     x = {}
     
     for i in range(1, n_factorial + 1):
@@ -78,7 +88,7 @@ def P_even(n, d, n_factorial, S_n, permutation_index_map, adjacency_matrix):
         model.addConstr(x[index + 1] * sum(x[i + 1] for i in indices) == 0, f"c{index + 1}")
 
     model.optimize()
-    model.write(f"results/P({n}, {d})/model.mps")
+    model.write(f"results/P({n}, {d}) {distanceMetric}/model.mps")
     if model.status == GRB.OPTIMAL:
         print("Optimal solution found:")
         for i in range(1, n_factorial + 1):
@@ -90,10 +100,10 @@ def P_even(n, d, n_factorial, S_n, permutation_index_map, adjacency_matrix):
 
 
 # Solve the optimization problem for odd d
-def P_odd(n, d, n_factorial, S_n, permutation_index_map, adjacency_matrix):
+def P_odd(n, d, distanceMetric, n_factorial, S_n, permutation_index_map, adjacency_matrix):
     t = (d - 1) // 2
     model = gp.Model()
-    model.Params.SolFiles = f"results/P({n}, {d})/solution"
+    model.Params.SolFiles = f"results/P({n}, {d}) {distanceMetric}/solution"
     x = {}
     
     for i in range(1, n_factorial + 1):
@@ -107,7 +117,7 @@ def P_odd(n, d, n_factorial, S_n, permutation_index_map, adjacency_matrix):
         model.addConstr(sum(x[i + 1] for i in indices) <= 1, f"c{index + 1}")
 
     model.optimize()
-    model.write(f"results/P({n}, {d})/.mps")
+    model.write(f"results/P({n}, {d}) {distanceMetric}/.mps")
     if model.status == GRB.OPTIMAL:
         print("Optimal solution found:")
         for i in range(1, n_factorial + 1):
@@ -119,33 +129,46 @@ def P_odd(n, d, n_factorial, S_n, permutation_index_map, adjacency_matrix):
 
 
 # Calculate the size of the largest subset of permutations with min Kendall tau-distance d
-def P(n, d, n_factorial, S_n, permutation_index_map, adjacency_matrix):
+def P(n, d, distanceMetric, n_factorial, S_n, permutation_index_map, adjacency_matrix):
     if d % 2 == 0:
-        P_even(n, d, n_factorial, S_n, permutation_index_map, adjacency_matrix)
+        P_even(n, d, distanceMetric, n_factorial, S_n, permutation_index_map, adjacency_matrix)
     else:
-        P_odd(n, d, n_factorial, S_n, permutation_index_map, adjacency_matrix)
+        P_odd(n, d, distanceMetric, n_factorial, S_n, permutation_index_map, adjacency_matrix)
     # Or, we can use the P_even formulation for odd d as well
     # P_even(n, d, n_factorial, S_n, permutation_index_map, adjacency_matrix)
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 3:
-        print("Usage: python script.py <n> <d>")
-        sys.exit(1)
-
-    n = int(sys.argv[1])
-    d = int(sys.argv[2])
-
+    questions = [
+        inquirer.Text("n", message="Enter n", validate=lambda _, x: int(x) >= 2),
+        inquirer.Text("d", message="Enter d", validate=lambda _, x: int(x) >= 1),
+        inquirer.List("distanceMetric", message="Choose a distance metric", choices=["Chebyshev", "Kendall Tau"], default="Chebyshev")
+    ]
+    answers = inquirer.prompt(questions)
+    n = int(answers["n"])
+    d = int(answers["d"])
+    distanceMetric = answers["distanceMetric"]
+    
     S_n = list(permutations(range(1, n + 1)))
     n_factorial = len(S_n)
     permutation_index_map = {permutation: i for i, permutation in enumerate(S_n)}
 
-    adjacency_matrix = [[d_K(sigma, pi) for pi in S_n] for sigma in S_n]
+    adjacency_matrix = []
+    for sigma in S_n:
+        row = []
+        for pi in S_n:
+            if distanceMetric == "Chebyshev":
+                row.append(d_C(sigma, pi))
+            elif distanceMetric == "Kendall Tau":
+                row.append(d_K(sigma, pi))
+            else:
+                raise ValueError("Invalid distance metric")
+        adjacency_matrix.append(row)
 
     # Create directory for storing results if it does not exist
-    directory = f"results/P({n}, {d})"
+    directory = f"results/P({n}, {d}) {distanceMetric}"
     if not os.path.exists(directory):
         os.makedirs(directory)
         
-    P(n, d, n_factorial, S_n, permutation_index_map, adjacency_matrix)
+    P(n, d, distanceMetric, n_factorial, S_n, permutation_index_map, adjacency_matrix)
     
