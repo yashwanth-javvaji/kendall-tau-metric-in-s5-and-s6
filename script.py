@@ -1,4 +1,3 @@
-import sys
 import os
 from itertools import permutations
 import gurobipy as gp
